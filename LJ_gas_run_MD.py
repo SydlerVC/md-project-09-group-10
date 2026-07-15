@@ -38,7 +38,8 @@ from LJ_gas import(
     potential_energy,
     kinetic_energy,
     instantaneous_temperature,
-    ideal_gas_pressure
+    ideal_gas_pressure,
+    steepest_descent_step
     )
 
 #----------------------------------------------------------------
@@ -76,11 +77,14 @@ epsilon_argon = 120*R*1e-3      # epsilon in kJ/mol Argon: 120
 # simulation
 dt = 0.1             # ps
 n_steps = 1000 
+n_relax_steps = 1000
 temperature = 300     # K
 box_length = 100      # nm
+sd_eta = 0.1
 tau_thermostat = 1  # thermostat coupling constant in 1/ps
 rij_min = 1e-2      # nm
 NVT = True          # switch to decide between NVT and NVE
+energy_minimizer = "SD" #choose the method of energy minimization: none: NONE; steepest descent: SD
 
 # output
 file_name_base = "my_simulation"  # file name for all output files
@@ -96,8 +100,10 @@ tic()
 #
 sim = SimulationParameters(dt = dt, 
                            n_steps = n_steps, 
+                           n_relax_steps = n_relax_steps,
                            temperature = temperature, 
-                           box_length = box_length, 
+                           box_length = box_length,
+                           sd_eta = sd_eta, 
                            tau_thermostat = tau_thermostat,
                            rij_min=rij_min
                            )
@@ -113,6 +119,27 @@ for i in range(n_particles):
 
 # set initial positions     
 initialize_positions(ps, sim.box_length)
+
+#--------------------------------------------------
+#  Energy minimization
+#--------------------------------------------------
+
+#steepest descent
+if energy_minimizer == "SD":
+    E = np.zeros((n_relax_steps, 2))
+    for i in range(n_relax_steps):
+        steepest_descent_step(ps, sim)
+        energy = potential_energy(ps, sim)
+        E[i, 0] = i
+        E[i, 1] = energy
+       
+    plt.plot(E[:,0], E[:,1])
+    plt.xlabel("Iteration")
+    plt.ylabel("Potential Energy")
+    plt.title("Steepest Descent Energy Minimization")
+    plt.grid(True)
+    plt.show()
+
 
 # set initial velocities     
 initialize_velocities(ps, sim.temperature)

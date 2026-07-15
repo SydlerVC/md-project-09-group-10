@@ -72,7 +72,7 @@ class ParticleSystem:
 
 
 class SimulationParameters:
-    def __init__(self, dt, n_steps, temperature, box_length, tau_thermostat = None, rij_min=0.0, ):
+    def __init__(self, dt, n_steps, n_relax_steps, temperature, box_length, sd_eta, tau_thermostat = None, rij_min=0.0):
         """
         Parameters:
             dt (float): Time step in ps.
@@ -87,10 +87,12 @@ class SimulationParameters:
         """
         self.dt = dt
         self.n_steps = n_steps
+        self.n_relax_steps = n_relax_steps
         self.temperature = temperature
         self.box_length = box_length  # in nm
         self.tau_thermostat = tau_thermostat  # thermostat coupling time in ps
         self.rij_min = rij_min        # minimum allowed pairwise distance
+        self.sd_eta = sd_eta            #eta used for steepest descent
 
         # Optional: friction coefficient for Langevin or stochastic thermostats
         self.xi = None
@@ -506,6 +508,23 @@ def apply_periodic_boundary(ps: ParticleSystem, sim: SimulationParameters):
     # x >= L : x/L = 1*L + remainder => return remainder => shifts x by L to the left
     ps.position = np.mod(ps.position, L)
     
+def steepest_descent_step(ps, sim):
+    calculate_force(ps, sim)
+    forces = ps.force
+
+    fmax = np.max(np.linalg.norm(forces, axis=1))
+    if fmax < 1e-12:
+        return
+
+    # stable step size
+    eta = sim.sd_eta / (fmax + 1e-12)
+    eta = min(eta, 0.01)   
+
+    # correct sign
+    ps.position += eta * forces
+
+    ps.position %= sim.box_length
+
 
 #--------------------------------------
 # Output
