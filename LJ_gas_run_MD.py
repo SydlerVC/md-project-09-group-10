@@ -39,7 +39,7 @@ from LJ_gas import(
     kinetic_energy,
     instantaneous_temperature,
     ideal_gas_pressure,
-    steepest_descent_step
+    steepest_descent_step,
     )
 
 #----------------------------------------------------------------
@@ -69,19 +69,19 @@ def toc():
 #   P A R A M E T E R S
 #----------------------------------------------------------------
 # system
-n_particles = 200
+n_particles = 500
 mass_argon =  39.95             # mass in u = 1e-3 kg/mol
 sigma_argon = 0.34              # sigma in nm     Argon: 0.34
 epsilon_argon = 120*R*1e-3      # epsilon in kJ/mol Argon: 120
 
 # simulation
-dt = 0.1             # ps
-n_steps = 1000 
-n_relax_steps = 1000
+dt = 0.001             # ps
+n_steps = 10000 
+n_relax_steps = 10000
 temperature = 300     # K
-box_length = 100      # nm
+box_length = 3.0      # nm
 sd_eta = 0.1
-tau_thermostat = 1  # thermostat coupling constant in 1/ps
+tau_thermostat = 0.1  # thermostat coupling constant in 1/ps
 rij_min = 1e-2      # nm
 NVT = True          # switch to decide between NVT and NVE
 energy_minimizer = "SD" #choose the method of energy minimization: none: NONE; steepest descent: SD
@@ -139,6 +139,22 @@ if energy_minimizer == "SD":
     plt.title("Steepest Descent Energy Minimization")
     plt.grid(True)
     plt.show()
+
+    # Values after minimization
+    calculate_force(ps, sim)   # updates ps.force in-place
+
+    maxF = np.max(np.linalg.norm(ps.force, axis=1))
+    print("max |F| after SD:", maxF)
+
+    rmin = 1e9
+    for i in range(ps.n):
+        for j in range(i+1, ps.n):
+            rij = ps.position[j] - ps.position[i]
+            rij -= box_length * np.round(rij / box_length)
+            r = np.linalg.norm(rij)
+            rmin = min(rmin, r)
+
+    print("r_min after SD:", rmin, "nm")
 
 
 # set initial velocities     

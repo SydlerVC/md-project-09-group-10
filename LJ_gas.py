@@ -96,8 +96,8 @@ class SimulationParameters:
 
         # Optional: friction coefficient for Langevin or stochastic thermostats
         self.xi = None
-        if self.tau_thermostat and self.tau_thermostat > 0.0: 
-            self.xi = 1/self.tau_thermostat
+        if self.tau_thermostat is not None and self.tau_thermostat > 0.0:
+            self.xi = 1.0 / self.tau_thermostat
 
 
 #----------------------------------------------------------------
@@ -330,10 +330,8 @@ def calculate_force(ps: ParticleSystem, sim: SimulationParameters):
     force = np.zeros_like(ps.position)  # shape (N, 3)
 
     # Distribute pairwise forces to particle i and j
-    for idx, (i, j) in enumerate(zip(i_upper[0], i_upper[1])):
-        force[i] -= f_ij[idx]
-        force[j] += f_ij[idx]
-
+    np.add.at(force, i_upper[0], -f_ij)
+    np.add.at(force, i_upper[1],  f_ij)
     # update the force vector in the ParticleSystem class
     ps.force = force
 
