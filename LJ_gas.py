@@ -330,7 +330,7 @@ def calculate_force(ps: ParticleSystem, sim: SimulationParameters):
     force = np.zeros_like(ps.position)  # shape (N, 3)
 
     # Distribute pairwise forces to particle i and j
-    np.add.at(force, i_upper[0], -f_ij)
+    np.add.at(force, i_upper[0], -f_ij) #this is way faster than the for loop and does the same thing
     np.add.at(force, i_upper[1],  f_ij)
     # update the force vector in the ParticleSystem class
     ps.force = force
@@ -507,6 +507,18 @@ def apply_periodic_boundary(ps: ParticleSystem, sim: SimulationParameters):
     ps.position = np.mod(ps.position, L)
     
 def steepest_descent_step(ps, sim):
+    """
+    Performs a single step of energy minimization using the steepest descent method
+
+    It updates the positions using a chosen eta wich is then divided by the maximum force
+        
+    Parameters:
+        ps (ParticleSystem): Particle data including velocity, position, mass, etc.
+        sim (SimulationParameters): Simulation control parameters.
+
+    Returns:
+        None
+    """
     calculate_force(ps, sim)
     forces = ps.force
 
@@ -522,6 +534,8 @@ def steepest_descent_step(ps, sim):
     ps.position += eta * forces
 
     ps.position %= sim.box_length
+
+    return None
 
 
 #--------------------------------------
