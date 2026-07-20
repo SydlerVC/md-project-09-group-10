@@ -177,9 +177,14 @@ energy_trajectory[0,3] = ideal_gas_pressure(ps, sim)      # ideal gas pressure
 
 
 #--------------------------------------------------
-#  The acutal MD simulation
+#  The actual MD simulation
 #--------------------------------------------------
 for i in range(sim.n_steps):
+
+    if i % max(1, sim.n_steps // 10) == 0:
+        percent = 100 * i / sim.n_steps
+        print(f"MD simulation: {percent:.0f}%", flush=True)
+
     if NVT==True:
         simulate_NVT_step(ps, sim)
     else: 
@@ -194,6 +199,7 @@ for i in range(sim.n_steps):
     energy_trajectory[i+1,2] = instantaneous_temperature(ps)  # instantaneous pressure
     energy_trajectory[i+1,3] = ideal_gas_pressure(ps, sim)    # ideal gas pressure
 
+print("MD simulation finished!", flush=True)
 
 #--------------------------------------
 # W R I T E    T R A J E C T O R I E S 
@@ -224,7 +230,7 @@ plt.xlabel("time [ps]", fontsize=14)
 plt.ylabel("E_pot [kJ/mol]", fontsize=14)
 
 plt.savefig(file_name_base + "_Epot.png", dpi=300, bbox_inches='tight')
-plt.show()
+
 
 #
 # kinetic energy
@@ -239,7 +245,7 @@ plt.xlabel("time [ps]", fontsize=14)
 plt.ylabel("E_kin [kJ/mol]", fontsize=14)
 
 plt.savefig(file_name_base + "_Ekin.png", dpi=300, bbox_inches='tight')
-plt.show()
+
 
 #
 # temperature
@@ -254,7 +260,7 @@ plt.xlabel("time [ps]", fontsize=14)
 plt.ylabel("T [K]", fontsize=14)
 
 plt.savefig(file_name_base + "_T.png", dpi=300, bbox_inches='tight')
-plt.show()
+
 
 #
 # pressure
@@ -269,7 +275,7 @@ plt.xlabel("time [ps]", fontsize=14)
 plt.ylabel("P [Pa]", fontsize=14)
 
 plt.savefig(file_name_base + "_P.png", dpi=300, bbox_inches='tight')
-plt.show()
+
 
 
 #--------------------------------------
@@ -324,3 +330,5 @@ with open(file_name_base + ".out", "w") as f:
 print("E_pot: min =", energy_trajectory[:,0].min(), " max =", energy_trajectory[:,0].max())
 print("E_pot std:", energy_trajectory[:,0].std())
 print("P: min =", energy_trajectory[:,3].min(), " max =", energy_trajectory[:,3].max())
+
+plt.show() #show all plots
