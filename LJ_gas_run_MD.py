@@ -32,10 +32,9 @@ from LJ_gas import(
     simulate_NVT_step,
     initialize_positions,
     initialize_velocities,
-    calculate_force,
+    calculate_force_and_energy,
     density,
     write_xyz_trajectory,
-    potential_energy,
     kinetic_energy,
     instantaneous_temperature,
     ideal_gas_pressure,
@@ -78,7 +77,7 @@ epsilon_argon = 120*R*1e-3      # epsilon in kJ/mol Argon: 120
 # simulation
 dt = 0.001             # ps
 n_steps = 20000 
-use_sd = False
+use_sd = True
 temperature = 300     # K
 box_length = 3.0      # nm
 sd_eta = 0.1
@@ -132,7 +131,7 @@ if use_sd == True:
 if energy_minimizer == "FIRE":
     fire_minimize(ps, sim)
     # Values after minimization
-    calculate_force(ps, sim)   # updates ps.force in-place
+    calculate_force_and_energy(ps, sim)   # updates ps.force in-place
 
     maxF = np.max(np.linalg.norm(ps.force, axis=1))
     print("max |F| after SD:", maxF)
@@ -152,13 +151,13 @@ if energy_minimizer == "FIRE":
 initialize_velocities(ps, sim.temperature)
 
 # calculate force according to initial positions
-calculate_force(ps, sim)
+calculate_force_and_energy(ps, sim)
 
 # calculate box density
 rho = density(ps, sim)
 
 # calculate initial values of variable properties
-E_pot_init = potential_energy(ps, sim)
+E_pot_init = calculate_force_and_energy(ps, sim)
 E_kin_init = kinetic_energy(ps)
 T_init = instantaneous_temperature(ps)
 P_init = ideal_gas_pressure(ps, sim)
@@ -170,29 +169,36 @@ position_trajectory[0,:,:] = ps.position # initial position
 
 # initialize energy trajectory
 energy_trajectory = np.zeros((sim.n_steps+1, 4))
-energy_trajectory[0,0] = potential_energy( ps, sim)       # potential energy
+energy_trajectory[0,0] = calculate_force_and_energy( ps, sim)       # potential energy
 energy_trajectory[0,1] = kinetic_energy(ps)               # kinetic energy
 energy_trajectory[0,2] = instantaneous_temperature(ps)    # instantaneous pressure
 energy_trajectory[0,3] = ideal_gas_pressure(ps, sim)      # ideal gas pressure
 
 
 #--------------------------------------------------
-#  The acutal MD simulation
+#  The actual MD simulation
 #--------------------------------------------------
 for i in range(sim.n_steps):
+
+    if i % max(1, sim.n_steps // 10) == 0:
+        percent = 100 * i / sim.n_steps
+        print(f"MD simulation: {percent:.0f}%", flush=True)
+
     if NVT==True:
-        simulate_NVT_step(ps, sim)
+        E_pot = simulate_NVT_step(ps, sim)
     else: 
-        simulate_NVE_step(ps, sim)
+        E_pot = simulate_NVE_step(ps, sim)
         
     # store updated positions
     position_trajectory[i+1,:,:] = ps.position # store updated positions
 
     # store updated energies, temperature and pressure
-    energy_trajectory[i+1,0] = potential_energy( ps, sim)     # potential energy
+    energy_trajectory[i+1,0] = E_pot     # potential energy
     energy_trajectory[i+1,1] = kinetic_energy(ps)             # kinetic energy
     energy_trajectory[i+1,2] = instantaneous_temperature(ps)  # instantaneous pressure
     energy_trajectory[i+1,3] = ideal_gas_pressure(ps, sim)    # ideal gas pressure
+
+print("MD simulation finished!", flush=True)
 
 
 #--------------------------------------
@@ -224,7 +230,6 @@ plt.xlabel("time [ps]", fontsize=14)
 plt.ylabel("E_pot [kJ/mol]", fontsize=14)
 
 plt.savefig(file_name_base + "_Epot.png", dpi=300, bbox_inches='tight')
-plt.show()
 
 #
 # kinetic energy
@@ -239,7 +244,6 @@ plt.xlabel("time [ps]", fontsize=14)
 plt.ylabel("E_kin [kJ/mol]", fontsize=14)
 
 plt.savefig(file_name_base + "_Ekin.png", dpi=300, bbox_inches='tight')
-plt.show()
 
 #
 # temperature
@@ -254,7 +258,6 @@ plt.xlabel("time [ps]", fontsize=14)
 plt.ylabel("T [K]", fontsize=14)
 
 plt.savefig(file_name_base + "_T.png", dpi=300, bbox_inches='tight')
-plt.show()
 
 #
 # pressure
@@ -269,7 +272,6 @@ plt.xlabel("time [ps]", fontsize=14)
 plt.ylabel("P [Pa]", fontsize=14)
 
 plt.savefig(file_name_base + "_P.png", dpi=300, bbox_inches='tight')
-plt.show()
 
 
 #--------------------------------------
@@ -324,3 +326,6 @@ with open(file_name_base + ".out", "w") as f:
 print("E_pot: min =", energy_trajectory[:,0].min(), " max =", energy_trajectory[:,0].max())
 print("E_pot std:", energy_trajectory[:,0].std())
 print("P: min =", energy_trajectory[:,3].min(), " max =", energy_trajectory[:,3].max())
+
+
+plt.show() #show all plots

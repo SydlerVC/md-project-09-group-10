@@ -145,51 +145,33 @@ def initialize_velocities(ps: ParticleSystem, temperature: float):
 # Energies
 #--------------------------------------
 
-def potential_energy(ps: ParticleSystem, sim: SimulationParameters) -> float:
-    """
-    Computes the total Lennard-Jones potential energy of the system.
-    
-    Assumes uniform Lennard-Jones parameters:
-        epsilon and sigma (taken from particle 0)
-    
-    Units:
-        Energy is in the same units as epsilon (kJ/mol).
-        Positions must be in the same units as sigma (nm).
-    """
+def calculate_force_and_energy(ps: ParticleSystem, sim: SimulationParameters):
     n_particles = ps.n
     sigma = ps.sigma[0]
     epsilon = ps.epsilon[0]
     L = sim.box_length
-        
-    # vectorized code to calculate the pairwise distances
-    # positions[:, np.newaxis, :] has shape (N, 1, 3)
-    # positions[np.newaxis, :, :] has shape (1, N, 3)
-    # The difference broadcasted has shape (N, N, 3)
+
     rij_matrix = ps.position[:, np.newaxis, :] - ps.position[np.newaxis, :, :]
-    
-    # apply periodic boundary conditions
     rij_matrix -= L * np.rint(rij_matrix / L)
-    
-    # Pairwise distances (shape: N, N)
-    r_matrix = np.linalg.norm(rij_matrix, axis=-1)  
+    r_matrix = np.linalg.norm(rij_matrix, axis=-1)
 
-    # Extract upper triangle indices (i < j), i.e. the list of unique pairs
     i_upper = np.triu_indices(n_particles, k=1)
-    
-    # Get list of unique distance vectors and unique distances
-    r = r_matrix[i_upper]                           # shape (N_pairs,)
+    rij = rij_matrix[i_upper]
+    r = np.clip(r_matrix[i_upper], sim.rij_min, None)
 
-    # reset the very small distance to 0.00001 nm to make sure
-    # that the sr6**2 term is numerically stable
-    r = np.clip(r, sim.rij_min, None)
-    
-    # Compute Lennard-Jones potential for each unique pair
     sr6 = (sigma / r)**6
-    lj_pairwise = 4 * epsilon * (sr6**2 - sr6)
+    E_pot = np.sum(4 * epsilon * (sr6**2 - sr6))
+    dV_dr = 24 * epsilon / r * (-2 * sr6**2 + sr6)
+    f_ij = (dV_dr[:, np.newaxis] / r[:, np.newaxis]) * rij   # force from j on i
 
-    # Total potential energy
-    E_pot = np.sum(lj_pairwise)
+    force = np.zeros((n_particles, 3))
+    i_idx, j_idx = i_upper
+    for k in range(3):
+        force[:, k] += np.bincount(i_idx, weights=-f_ij[:, k], minlength=n_particles)
+        force[:, k] += np.bincount(j_idx, weights= f_ij[:, k], minlength=n_particles)
     
+    ps.force = force
+
     return E_pot
 
 def kinetic_energy(ps: ParticleSystem) -> float:
@@ -274,66 +256,7 @@ def ideal_gas_pressure(ps: ParticleSystem, sim: SimulationParameters) -> float:
 # MD integrators
 #--------------------------------------
 
-def calculate_force(ps: ParticleSystem, sim: SimulationParameters):
-    """
-    Computes and assigns Lennard-Jones forces between all unique particle pairs.
 
-    Assumes:
-        - Pairwise interactions use identical sigma and epsilon values.
-        - Positions are in units compatible with sigma (e.g. nm).
-        - Returns no value; updates ps.force in-place (shape: (N, 3)).
-    """
-    
-    n_particles = ps.n
-    sigma = ps.sigma[0]
-    epsilon = ps.epsilon[0]
-    L = sim.box_length
-
-
-    # vectorized code to calculate the pairwise distances
-    # positions[:, np.newaxis, :] has shape (N, 1, 3)
-    # positions[np.newaxis, :, :] has shape (1, N, 3)
-    # The difference broadcasted has shape (N, N, 3)
-    rij_matrix = ps.position[:, np.newaxis, :] - ps.position[np.newaxis, :, :]
-    
-    # apply periodic boundary conditions
-    rij_matrix -= L * np.rint(rij_matrix / L)
-    
-    # Pairwise distances (shape: N, N)
-    r_matrix = np.linalg.norm(rij_matrix, axis=-1)  
-
-    # Extract upper triangle indices (i < j), i.e. the list of unique pairs
-    i_upper = np.triu_indices(n_particles, k=1)
-    
-    # Get list of unique distance vectors and unique distances
-    rij = rij_matrix[i_upper]                       # shape (N_pairs, 3)    
-    r = r_matrix[i_upper]                           # shape (N_pairs,)
-    
-    # reset distances < rij_min  to rij_min to make sure
-    # that the sr6**2 term is numerically stable
-    r = np.clip(r, sim.rij_min, None)
-    
-    # Normalize rij to unit vectors and rescale to match clipped r
-    rij = rij / np.linalg.norm(rij, axis=1)[:, np.newaxis]  # normalize each rij
-    rij *= r[:, np.newaxis]                                 # rescale to clipped r
-
-    # Lennard-Jones force magnitude: dV/dr
-    sr6 = (sigma / r)**6                            # shape (N_pairs,)
-    dV_dr = 24 * epsilon / r * (-2 * sr6**2 + sr6)  # shape (N_pairs,)
-
-    # Force vectors: shape (N_pairs, 3)
-    # dV_dr[:, np.newaxis] shapes it to (N_pairs, 1), i.e. 2D column vector
-    # broadcasting to rij with shape (N_pairs, 3) is then possible
-    f_ij = (dV_dr[:, np.newaxis] / r[:, np.newaxis]) * rij
-
-    # Initialize total force array
-    force = np.zeros_like(ps.position)  # shape (N, 3)
-
-    # Distribute pairwise forces to particle i and j
-    np.add.at(force, i_upper[0], -f_ij) #this is way faster than the for loop and does the same thing
-    np.add.at(force, i_upper[1],  f_ij)
-    # update the force vector in the ParticleSystem class
-    ps.force = force
 
 def A_step(ps: ParticleSystem, sim: SimulationParameters, half_step=False):
     """
@@ -446,16 +369,16 @@ def simulate_NVE_step(ps: ParticleSystem, sim: SimulationParameters):
         - sim (SimulationParameters): Simulation parameters including time step.
 
     Returns:
-        None. Updates ps.position, ps.velocity, and ps.force in-place.
+        Potential energy. Updates ps.position, ps.velocity, and ps.force in-place.
     """
     B_step(ps, sim, half_step=True)   # update velocity by a half-step
     A_step(ps, sim, half_step=False)  # update position by a full time step
-    calculate_force(ps, sim)          # udpate force  
+    E_pot = calculate_force_and_energy(ps, sim)          # udpate force  
     B_step(ps, sim, half_step=True)   # update velocity by a second half-step
 
     apply_periodic_boundary(ps, sim)
         
-    return None      
+    return E_pot      
 
 def simulate_NVT_step(ps: ParticleSystem, sim: SimulationParameters):
     """
@@ -476,7 +399,7 @@ def simulate_NVT_step(ps: ParticleSystem, sim: SimulationParameters):
         sim (SimulationParameters): Simulation control parameters.
 
     Returns:
-        None
+        potential energy
     """
     
     if sim.tau_thermostat is None:
@@ -487,12 +410,12 @@ def simulate_NVT_step(ps: ParticleSystem, sim: SimulationParameters):
     # thermostat
     O_step(ps, sim, half_step=False)  # Full-step velocity update using the Langevin thermostat (friction + noise)
     A_step(ps, sim, half_step=True)  # update position by a half-step
-    calculate_force(ps, sim)          # udpate force  
+    E_pot = calculate_force_and_energy(ps, sim)          # udpate force  
     B_step(ps, sim, half_step=True)   # update velocity by a second half-step
 
     apply_periodic_boundary(ps, sim)
         
-    return None 
+    return E_pot 
 
 def apply_periodic_boundary(ps: ParticleSystem, sim: SimulationParameters): 
     """
@@ -506,47 +429,51 @@ def apply_periodic_boundary(ps: ParticleSystem, sim: SimulationParameters):
     # x >= L : x/L = 1*L + remainder => return remainder => shifts x by L to the left
     ps.position = np.mod(ps.position, L)
     
-def steepest_descent_step(ps, sim, n_sd_steps = 500):
+def steepest_descent_step(ps, sim, fmax_threshold=100.0, max_steps=1000):
     """
-    Performs n_sd_steps of energy minimization using the steepest descent method
+    Performs steepest descent energy minimization until the max force
+    drops below fmax_threshold (or max_steps is reached).
 
-    It updates the positions using a chosen eta wich is then divided by the maximum force
-        
+    Intended as a quick "de-clash" phase before handing off to FIRE,
+    not as a full minimizer.
+
     Parameters:
         ps (ParticleSystem): Particle data including velocity, position, mass, etc.
         sim (SimulationParameters): Simulation control parameters.
+        fmax_threshold (float): Stop once max force drops below this value.
+        max_steps (int): Safety cap on number of iterations.
 
     Returns:
-        None
+        E (np.ndarray): Array of shape (n_steps_taken, 2) with (step, energy).
     """
-    E = np.zeros((n_sd_steps, 2))
-    for i in range(n_sd_steps):
-        calculate_force(ps, sim)
-        forces = ps.force
+    energy = calculate_force_and_energy(ps, sim)
+    forces = ps.force
+    fmax = np.max(np.linalg.norm(forces, axis=1))
 
-        fmax = np.max(np.linalg.norm(forces, axis=1))
+    E_list = []
+    step = 0
+
+    while fmax > fmax_threshold and step < max_steps:
         if fmax < 1e-12:
-            return
+            break
 
         # stable step size
         eta = sim.sd_eta / (fmax + 1e-12)
-        eta = min(eta, 0.01)   
+        eta = min(eta, 0.01)
 
-        #position update
+        # position update
         ps.position += eta * forces
-
         ps.position %= sim.box_length
-        energy = potential_energy(ps, sim)
-        E[i, 0] = i
-        E[i, 1] = energy
-    plt.plot(E[:,0], E[:,1])
-    plt.xlabel("Iteration")
-    plt.ylabel("Potential Energy")
-    plt.title("Steepest Descent Energy Minimization")
-    plt.grid(True)
-    plt.show()
 
-    return None
+        E_list.append((step, energy))
+
+        energy = calculate_force_and_energy(ps, sim)
+        forces = ps.force
+        fmax = np.max(np.linalg.norm(forces, axis=1))
+        step += 1
+
+    print(f"SD finished after {step} steps, fmax = {fmax:.3e}")
+    return np.array(E_list)
 
 
 #--------------------------------------
@@ -594,7 +521,7 @@ def fire_minimize(ps, sim,
     E = np.zeros((max_steps, 2))
 
     # Initial force
-    calculate_force(ps, sim)
+    energy = calculate_force_and_energy(ps, sim)
 
     converged = False
 
@@ -604,7 +531,7 @@ def fire_minimize(ps, sim,
         v = ps.velocity
 
         # Compute potential energy
-        energy = potential_energy(ps, sim)
+        
 
         # Log energy
         E[step, 0] = step
@@ -650,7 +577,7 @@ def fire_minimize(ps, sim,
         apply_periodic_boundary(ps, sim)
 
         # Recompute forces
-        calculate_force(ps, sim)
+        energy = calculate_force_and_energy(ps, sim)
         if step % 50 == 0:
             maxF = np.max(np.linalg.norm(ps.force, axis=1))
             print("step", step, "max|F| =", maxF)
