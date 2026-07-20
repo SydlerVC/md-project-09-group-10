@@ -200,7 +200,6 @@ for i in range(sim.n_steps):
 
 print("MD simulation finished!", flush=True)
 
-
 #--------------------------------------
 # W R I T E    T R A J E C T O R I E S 
 #--------------------------------------
@@ -326,6 +325,5 @@ with open(file_name_base + ".out", "w") as f:
 print("E_pot: min =", energy_trajectory[:,0].min(), " max =", energy_trajectory[:,0].max())
 print("E_pot std:", energy_trajectory[:,0].std())
 print("P: min =", energy_trajectory[:,3].min(), " max =", energy_trajectory[:,3].max())
-
 
 plt.show() #show all plots
