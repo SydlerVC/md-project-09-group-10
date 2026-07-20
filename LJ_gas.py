@@ -18,6 +18,7 @@ Created: May 28, 2025
 #----------------------------------------------------------------
 import numpy as np
 from scipy.constants import R, Avogadro
+import matplotlib.pyplot as plt
 
 #----------------------------------------------------------------
 #   C L A S S E S
@@ -72,7 +73,7 @@ class ParticleSystem:
 
 
 class SimulationParameters:
-    def __init__(self, dt, n_steps, n_relax_steps, temperature, box_length, sd_eta, tau_thermostat = None, rij_min=0.0):
+    def __init__(self, dt, n_steps, temperature, box_length, sd_eta, tau_thermostat = None, rij_min=0.0):
         """
         Parameters:
             dt (float): Time step in ps.
@@ -87,7 +88,6 @@ class SimulationParameters:
         """
         self.dt = dt
         self.n_steps = n_steps
-        self.n_relax_steps = n_relax_steps
         self.temperature = temperature
         self.box_length = box_length  # in nm
         self.tau_thermostat = tau_thermostat  # thermostat coupling time in ps
@@ -506,9 +506,9 @@ def apply_periodic_boundary(ps: ParticleSystem, sim: SimulationParameters):
     # x >= L : x/L = 1*L + remainder => return remainder => shifts x by L to the left
     ps.position = np.mod(ps.position, L)
     
-def steepest_descent_step(ps, sim):
+def steepest_descent_step(ps, sim, n_sd_steps = 500):
     """
-    Performs a single step of energy minimization using the steepest descent method
+    Performs n_sd_steps of energy minimization using the steepest descent method
 
     It updates the positions using a chosen eta wich is then divided by the maximum force
         
@@ -519,21 +519,32 @@ def steepest_descent_step(ps, sim):
     Returns:
         None
     """
-    calculate_force(ps, sim)
-    forces = ps.force
+    E = np.zeros((n_sd_steps, 2))
+    for i in range(n_sd_steps):
+        calculate_force(ps, sim)
+        forces = ps.force
 
-    fmax = np.max(np.linalg.norm(forces, axis=1))
-    if fmax < 1e-12:
-        return
+        fmax = np.max(np.linalg.norm(forces, axis=1))
+        if fmax < 1e-12:
+            return
 
-    # stable step size
-    eta = sim.sd_eta / (fmax + 1e-12)
-    eta = min(eta, 0.01)   
+        # stable step size
+        eta = sim.sd_eta / (fmax + 1e-12)
+        eta = min(eta, 0.01)   
 
-    # correct sign
-    ps.position += eta * forces
+        #position update
+        ps.position += eta * forces
 
-    ps.position %= sim.box_length
+        ps.position %= sim.box_length
+        energy = potential_energy(ps, sim)
+        E[i, 0] = i
+        E[i, 1] = energy
+    plt.plot(E[:,0], E[:,1])
+    plt.xlabel("Iteration")
+    plt.ylabel("Potential Energy")
+    plt.title("Steepest Descent Energy Minimization")
+    plt.grid(True)
+    plt.show()
 
     return None
 
@@ -565,3 +576,97 @@ def write_xyz_trajectory(filename, trajectory, atom_symbol="Ar"):
             for pos in frame:
                 f.write(f"{atom_symbol} {pos[0]:.8f} {pos[1]:.8f} {pos[2]:.8f}\n")
  
+def fire_minimize(ps, sim, 
+                  dt_init=0.002, dt_max=0.02,
+                  alpha_start=0.5, 
+                  n_min=5, 
+                  f_tol=1e-4, 
+                  max_steps=5000):
+
+    dt = dt_init
+    alpha = alpha_start
+    n_pos = 0
+
+    # Zero velocities
+    ps.velocity[:] = 0.0
+
+    # Allocate energy array
+    E = np.zeros((max_steps, 2))
+
+    # Initial force
+    calculate_force(ps, sim)
+
+    converged = False
+
+    for step in range(max_steps):
+
+        forces = ps.force
+        v = ps.velocity
+
+        # Compute potential energy
+        energy = potential_energy(ps, sim)
+
+        # Log energy
+        E[step, 0] = step
+        E[step, 1] = energy
+
+        # Check convergence
+        fmax = np.max(np.linalg.norm(forces, axis=1))
+        if fmax < f_tol:
+            print(f"FIRE converged in {step} steps, fmax = {fmax:.3e}")
+            converged = True
+            break
+
+        # Gradient descent velocity update
+        v += forces * dt / ps.mass[:, None]
+
+        # Power P = v·F
+        P = np.sum(v * forces)
+
+        if P > 0:
+            n_pos += 1
+
+            Fnorm = np.linalg.norm(forces)
+            Vnorm = np.linalg.norm(v)
+
+            # mix velocity using the CURRENT alpha, before decaying it
+            if Fnorm > 0 and Vnorm > 0:
+                v[:] = (1 - alpha) * v + alpha * (forces / Fnorm) * Vnorm
+
+            if n_pos > n_min:
+                dt = min(dt * 1.1, dt_max)
+                alpha *= 0.99
+
+        else:
+            n_pos = 0
+            dt *= 0.5
+            alpha = alpha_start
+            v[:] = 0.0
+
+        # Update positions
+        ps.position += v * dt
+
+        # Apply PBC
+        apply_periodic_boundary(ps, sim)
+
+        # Recompute forces
+        calculate_force(ps, sim)
+        if step % 50 == 0:
+            maxF = np.max(np.linalg.norm(ps.force, axis=1))
+            print("step", step, "max|F| =", maxF)
+
+    else:
+        # loop completed without break -> did not converge
+        print(f"FIRE did NOT converge within {max_steps} steps, fmax = {fmax:.3e}")
+
+    # Plot energy curve once, after the loop
+    n_recorded = step + 1
+    plt.figure()
+    plt.plot(E[:n_recorded, 0], E[:n_recorded, 1])
+    plt.xlabel("Iteration")
+    plt.ylabel("Potential Energy")
+    plt.title("FIRE Energy Minimization")
+    plt.grid(True)
+    plt.show()
+
+    return converged

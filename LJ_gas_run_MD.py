@@ -40,6 +40,7 @@ from LJ_gas import(
     instantaneous_temperature,
     ideal_gas_pressure,
     steepest_descent_step,
+    fire_minimize,
     )
 
 #----------------------------------------------------------------
@@ -76,15 +77,15 @@ epsilon_argon = 120*R*1e-3      # epsilon in kJ/mol Argon: 120
 
 # simulation
 dt = 0.001             # ps
-n_steps = 10000 
-n_relax_steps = 10000
+n_steps = 20000 
+use_sd = False
 temperature = 300     # K
 box_length = 3.0      # nm
 sd_eta = 0.1
-tau_thermostat = 0.1  # thermostat coupling constant in 1/ps
+tau_thermostat = 1.0  # thermostat coupling constant in 1/ps
 rij_min = 1e-2      # nm
 NVT = True          # switch to decide between NVT and NVE
-energy_minimizer = "SD" #choose the method of energy minimization: none: NONE; steepest descent: SD
+energy_minimizer = "FIRE" #choose the method of energy minimization
 
 # output
 file_name_base = "my_simulation"  # file name for all output files
@@ -100,7 +101,6 @@ tic()
 #
 sim = SimulationParameters(dt = dt, 
                            n_steps = n_steps, 
-                           n_relax_steps = n_relax_steps,
                            temperature = temperature, 
                            box_length = box_length,
                            sd_eta = sd_eta, 
@@ -125,21 +125,12 @@ initialize_positions(ps, sim.box_length)
 #--------------------------------------------------
 
 #steepest descent
-if energy_minimizer == "SD":
-    E = np.zeros((n_relax_steps, 2))
-    for i in range(n_relax_steps):
-        steepest_descent_step(ps, sim)
-        energy = potential_energy(ps, sim)
-        E[i, 0] = i
-        E[i, 1] = energy
-       
-    plt.plot(E[:,0], E[:,1])
-    plt.xlabel("Iteration")
-    plt.ylabel("Potential Energy")
-    plt.title("Steepest Descent Energy Minimization")
-    plt.grid(True)
-    plt.show()
+if use_sd == True:
+    steepest_descent_step(ps, sim)
+        
 
+if energy_minimizer == "FIRE":
+    fire_minimize(ps, sim)
     # Values after minimization
     calculate_force(ps, sim)   # updates ps.force in-place
 
@@ -223,12 +214,12 @@ time_ps = np.arange(sim.n_steps + 1) * sim.dt
 #
 # potential energy
 # 
-E_pot_min = np.mean(energy_trajectory[:,0]) - 1   # lower limit of E_pot axis
-E_pot_max = np.mean(energy_trajectory[:,0]) + 1   # upper limit of E_pot axis 
+#E_pot_min = np.mean(energy_trajectory[:,0]) - 1   # lower limit of E_pot axis
+#E_pot_max = np.mean(energy_trajectory[:,0]) + 1   # upper limit of E_pot axis 
 
 plt.figure(figsize=(8, 6))
 plt.plot(time_ps, energy_trajectory[:,0]) 
-plt.ylim(E_pot_min, E_pot_max)
+#plt.ylim(E_pot_min, E_pot_max)
 plt.xlabel("time [ps]", fontsize=14)
 plt.ylabel("E_pot [kJ/mol]", fontsize=14)
 
@@ -238,12 +229,12 @@ plt.show()
 #
 # kinetic energy
 # 
-E_kin_min = np.mean(energy_trajectory[:,1]) - 100   # lower limit of E_kin axis
-E_kin_max = np.mean(energy_trajectory[:,1]) + 100   # upper limit of E_kin axis 
+#E_kin_min = np.mean(energy_trajectory[:,1]) - 100   # lower limit of E_kin axis
+#E_kin_max = np.mean(energy_trajectory[:,1]) + 100   # upper limit of E_kin axis 
 
 plt.figure(figsize=(8, 6))
 plt.plot(time_ps, energy_trajectory[:,1]) 
-plt.ylim(E_kin_min, E_kin_max)
+#plt.ylim(E_kin_min, E_kin_max)
 plt.xlabel("time [ps]", fontsize=14)
 plt.ylabel("E_kin [kJ/mol]", fontsize=14)
 
@@ -253,12 +244,12 @@ plt.show()
 #
 # temperature
 # 
-T_min = np.mean(energy_trajectory[:,2]) - 100   # lower limit of T axis
-T_max = np.mean(energy_trajectory[:,2]) + 100   # upper limit of T axis 
+#T_min = np.mean(energy_trajectory[:,2]) - 100   # lower limit of T axis
+#T_max = np.mean(energy_trajectory[:,2]) + 100   # upper limit of T axis 
 
 plt.figure(figsize=(8, 6))
 plt.plot(time_ps, energy_trajectory[:,2]) 
-plt.ylim(T_min, T_max)
+#plt.ylim(T_min, T_max)
 plt.xlabel("time [ps]", fontsize=14)
 plt.ylabel("T [K]", fontsize=14)
 
@@ -268,12 +259,12 @@ plt.show()
 #
 # pressure
 # 
-P_min = np.mean(energy_trajectory[:,3]) - 200   # lower limit of P axis
-P_max = np.mean(energy_trajectory[:,3]) + 200   # upper limit of P axis 
+#P_min = np.mean(energy_trajectory[:,3]) - 200   # lower limit of P axis
+#P_max = np.mean(energy_trajectory[:,3]) + 200   # upper limit of P axis 
 
 plt.figure(figsize=(8, 6))
 plt.plot(time_ps, energy_trajectory[:,3]) 
-plt.ylim(P_min, P_max)
+#plt.ylim(P_min, P_max)
 plt.xlabel("time [ps]", fontsize=14)
 plt.ylabel("P [Pa]", fontsize=14)
 
@@ -329,3 +320,7 @@ for line in output_lines:
 with open(file_name_base + ".out", "w") as f:
     for line in output_lines:
         f.write(line + "\n")    
+
+print("E_pot: min =", energy_trajectory[:,0].min(), " max =", energy_trajectory[:,0].max())
+print("E_pot std:", energy_trajectory[:,0].std())
+print("P: min =", energy_trajectory[:,3].min(), " max =", energy_trajectory[:,3].max())
