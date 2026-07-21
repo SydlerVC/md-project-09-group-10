@@ -42,6 +42,7 @@ from LJ_gas import(
     fire_minimize,
     update_rdf_histogram,
     finalize_rdf,
+    calculate_msd,
     )
 
 #----------------------------------------------------------------
@@ -164,10 +165,12 @@ E_kin_init = kinetic_energy(ps)
 T_init = instantaneous_temperature(ps)
 P_init = ideal_gas_pressure(ps, sim)
 
-
 # initialize position trajectory
 position_trajectory = np.zeros((sim.n_steps+1, n_particles, 3))
 position_trajectory[0,:,:] = ps.position # initial position
+
+# Synchronize unwrapped_position after unitial placement and minimization
+ps.unwrapped_position = np.copy(ps.position)
 
 # initialize energy trajectory
 energy_trajectory = np.zeros((sim.n_steps+1, 4))
@@ -175,6 +178,15 @@ energy_trajectory[0,0] = calculate_force_and_energy( ps, sim)       # potential 
 energy_trajectory[0,1] = kinetic_energy(ps)               # kinetic energy
 energy_trajectory[0,2] = instantaneous_temperature(ps)    # instantaneous pressure
 energy_trajectory[0,3] = ideal_gas_pressure(ps, sim)      # ideal gas pressure
+
+# -----------------------------------
+# MSD Setup
+# -----------------------------------
+
+msd_start_step = 2000
+msd_trajectory = []
+msd_time = []
+ref_position = None
 
 # -----------------------------------
 # Radial Distribution Function setup
@@ -204,7 +216,20 @@ for i in range(sim.n_steps):
 
     else: 
         E_pot = simulate_NVE_step(ps, sim)
-        
+    
+    #--------------------------------------------------
+    #MSD accumulation
+    #--------------------------------------------------
+    #set the baseline snapshot once equilibrium is complete
+    if i == msd_start_step:
+        ref_position = np.copy(ps.unwrapped_position)
+
+    #calculate MSD after the reference is set
+    if i >= msd_start_step:
+        msd_value = calculate_msd(ps, ref_position)
+        msd_trajectory.append(msd_value)
+        msd_time.append((i - msd_start_step) * sim.dt) #time relative to t0
+    
     # store updated positions
     position_trajectory[i+1,:,:] = ps.position # store updated positions
 
@@ -310,9 +335,9 @@ plt.ylabel("P [Pa]", fontsize=14)
 
 plt.savefig(file_name_base + "_P.png", dpi=300, bbox_inches='tight')
 
-#----------------------------------------------------
-# Radial distribution function
-#----------------------------------------------------
+#
+# radial distribution function
+#
 
 plt.figure(figsize=(8,6))
 plt.plot(r, g)
@@ -322,6 +347,19 @@ plt.title("Radial Distribution Function")
 plt.grid(True)
 
 plt.savefig(file_name_base + "_RDF.png", dpi=300, bbox_inches="tight")
+
+#
+#mean sqaure displacement
+#
+
+plt.figure(figsize=(8, 6))
+plt.plot(msd_time, msd_trajectory, label="MSD")
+plt.xlabel("time [ps]", fontsize=14)
+plt.ylabel(r"MSD [nm$^2$]", fontsize=14)
+plt.title("Mean Squared Displacement", fontsize=14)
+plt.grid(True)
+
+plt.savefig(file_name_base + "_MSD.png", dpi=300, bbox_inches='tight')
 
 #--------------------------------------
 # O U T P U T 

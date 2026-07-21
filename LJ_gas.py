@@ -34,6 +34,7 @@ class ParticleSystem:
         
         # 3D positions, velocities, forces, and random numbers (shape: n_particles x 3)
         self.position = np.zeros((n_particles, 3))
+        self.unwrapped_position = np.zeros((n_particles, 3)) #position without PBC
         self.velocity = np.zeros((n_particles, 3))
         self.force = np.zeros((n_particles, 3))
         self.random_number = np.zeros((n_particles, 3))
@@ -106,29 +107,22 @@ class SimulationParameters:
 
 def update_rdf_histogram(ps, sim, hist, dr):
     """
-    Add one simulation snapshot to the RDF histogram.
+    Add one simulation snapshot to the RDF histogram (vectorized).
     """
-
     N = ps.n
     L = sim.box_length
     r_max = L / 2.0
 
-    for i in range(N - 1):
+    i_upper = np.triu_indices(N, k=1)
+    rij = ps.position[i_upper[1]] - ps.position[i_upper[0]]
+    rij -= L * np.round(rij / L)          # minimum image convention
+    r = np.linalg.norm(rij, axis=1)
 
-        for j in range(i + 1, N):
+    mask = r < r_max
+    r_valid = r[mask]
 
-            rij = ps.position[j] - ps.position[i]
-
-            # Minimum image convention
-            rij -= L * np.round(rij / L)
-
-            r = np.linalg.norm(rij)
-
-            if r < r_max:
-
-                index = int(r / dr)
-
-                hist[index] += 2.0
+    indices = np.clip((r_valid / dr).astype(int), 0, len(hist) - 1)
+    np.add.at(hist, indices, 2.0)
 
 def finalize_rdf(hist, n_samples, sim, ps, dr):
     """
@@ -337,6 +331,7 @@ def A_step(ps: ParticleSystem, sim: SimulationParameters, half_step=False):
         dt = sim.dt
         
     ps.position = ps.position + ps.velocity * dt
+    ps.unwrapped_position = ps.unwrapped_position + ps.velocity * dt
     
     return None    
 
@@ -654,3 +649,13 @@ def fire_minimize(ps, sim,
     plt.show()
 
     return converged
+
+def calculate_msd(ps: ParticleSystem, ref_position: np.ndarray) -> float:
+    """
+    Computes the mean squared displacement relative to reference unwrapped positions
+    
+    MSD(t) = (1/N) * sum_i | r_i^unwrapped(t) - r_i^unwrapped(0) |^2
+    """
+    dr = ps.unwrapped_position - ref_position
+    squared_displacement = np.sum(dr**2, axis=1)
+    return np.mean(squared_displacement)
