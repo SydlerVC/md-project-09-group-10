@@ -82,11 +82,11 @@ epsilon_argon = 120*R*1e-3      # epsilon in kJ/mol Argon: 120
 dt = 0.001             # ps
 n_steps = 10000 
 use_sd = True
-temperature = 80     # K
-box_length = 3.0      # nm
+temperature = 88     # K
+box_length = 2.7      # nm
 sd_eta = 0.1
 tau_thermostat = 1.0  # thermostat coupling constant in 1/ps
-rij_min = 1e-2      # nm
+rij_min = 1e-02      # nm
 NVT = True          # switch to decide between NVT and NVE
 energy_minimizer = "FIRE" #choose the method of energy minimization
 
