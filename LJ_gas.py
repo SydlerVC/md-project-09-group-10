@@ -104,6 +104,63 @@ class SimulationParameters:
 #   F U N C T I O N S
 #----------------------------------------------------------------
 
+def update_rdf_histogram(ps, sim, hist, dr):
+    """
+    Add one simulation snapshot to the RDF histogram.
+    """
+
+    N = ps.n
+    L = sim.box_length
+    r_max = L / 2.0
+
+    for i in range(N - 1):
+
+        for j in range(i + 1, N):
+
+            rij = ps.position[j] - ps.position[i]
+
+            # Minimum image convention
+            rij -= L * np.round(rij / L)
+
+            r = np.linalg.norm(rij)
+
+            if r < r_max:
+
+                index = int(r / dr)
+
+                hist[index] += 2.0
+
+def finalize_rdf(hist, n_samples, sim, ps, dr):
+    """
+    Normalize the accumulated RDF histogram.
+    """
+
+    N = ps.n
+    L = sim.box_length
+
+    rho = N / L**3
+
+    r_max = L / 2.0
+
+    bins = np.arange(0, r_max + dr, dr)
+
+    g = np.zeros_like(hist)
+
+    for i in range(len(hist)):
+
+        r1 = bins[i]
+        r2 = bins[i+1]
+
+        shell_volume = (4.0*np.pi/3.0)*(r2**3-r1**3)
+
+        ideal = rho * shell_volume * N
+
+        g[i] = hist[i] / (ideal * n_samples)
+
+    r = 0.5*(bins[:-1]+bins[1:])
+
+    return r, g
+
 #--------------------------------------
 # Initialization
 #--------------------------------------

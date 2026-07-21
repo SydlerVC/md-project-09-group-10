@@ -40,6 +40,8 @@ from LJ_gas import(
     ideal_gas_pressure,
     steepest_descent_step,
     fire_minimize,
+    update_rdf_histogram,
+    finalize_rdf,
     )
 
 #----------------------------------------------------------------
@@ -76,9 +78,9 @@ epsilon_argon = 120*R*1e-3      # epsilon in kJ/mol Argon: 120
 
 # simulation
 dt = 0.001             # ps
-n_steps = 20000 
+n_steps = 10000 
 use_sd = True
-temperature = 300     # K
+temperature = 80     # K
 box_length = 3.0      # nm
 sd_eta = 0.1
 tau_thermostat = 1.0  # thermostat coupling constant in 1/ps
@@ -174,18 +176,32 @@ energy_trajectory[0,1] = kinetic_energy(ps)               # kinetic energy
 energy_trajectory[0,2] = instantaneous_temperature(ps)    # instantaneous pressure
 energy_trajectory[0,3] = ideal_gas_pressure(ps, sim)      # ideal gas pressure
 
+# -----------------------------------
+# Radial Distribution Function setup
+# -----------------------------------
+
+dr = 0.01
+
+r_max = sim.box_length / 2
+
+n_bins = int(r_max / dr)
+
+rdf_hist = np.zeros(n_bins)
+
+rdf_samples = 0
 
 #--------------------------------------------------
 #  The actual MD simulation
 #--------------------------------------------------
 for i in range(sim.n_steps):
 
-    if i % max(1, sim.n_steps // 10) == 0:
+    if i % max(1, sim.n_steps // 100) == 0:
         percent = 100 * i / sim.n_steps
         print(f"MD simulation: {percent:.0f}%", flush=True)
 
     if NVT==True:
         E_pot = simulate_NVT_step(ps, sim)
+
     else: 
         E_pot = simulate_NVE_step(ps, sim)
         
@@ -198,7 +214,29 @@ for i in range(sim.n_steps):
     energy_trajectory[i+1,2] = instantaneous_temperature(ps)  # instantaneous pressure
     energy_trajectory[i+1,3] = ideal_gas_pressure(ps, sim)    # ideal gas pressure
 
+    #--------------------------------------
+    # RDF accumulation
+    #--------------------------------------
+
+    if i >= 2000 and i % 10 == 0:
+
+        update_rdf_histogram(ps, sim, rdf_hist, dr)
+
+        rdf_samples += 1
+
 print("MD simulation finished!", flush=True)
+
+#--------------------------------------
+# Finalize RDF
+#--------------------------------------
+
+r, g = finalize_rdf(
+    rdf_hist,
+    rdf_samples,
+    sim,
+    ps,
+    dr
+)
 
 #--------------------------------------
 # W R I T E    T R A J E C T O R I E S 
@@ -272,6 +310,18 @@ plt.ylabel("P [Pa]", fontsize=14)
 
 plt.savefig(file_name_base + "_P.png", dpi=300, bbox_inches='tight')
 
+#----------------------------------------------------
+# Radial distribution function
+#----------------------------------------------------
+
+plt.figure(figsize=(8,6))
+plt.plot(r, g)
+plt.xlabel("r [nm]", fontsize=14)
+plt.ylabel("g(r)", fontsize=14)
+plt.title("Radial Distribution Function")
+plt.grid(True)
+
+plt.savefig(file_name_base + "_RDF.png", dpi=300, bbox_inches="tight")
 
 #--------------------------------------
 # O U T P U T 
@@ -325,5 +375,6 @@ with open(file_name_base + ".out", "w") as f:
 print("E_pot: min =", energy_trajectory[:,0].min(), " max =", energy_trajectory[:,0].max())
 print("E_pot std:", energy_trajectory[:,0].std())
 print("P: min =", energy_trajectory[:,3].min(), " max =", energy_trajectory[:,3].max())
+
 
 plt.show() #show all plots
