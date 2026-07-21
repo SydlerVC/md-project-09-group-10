@@ -646,9 +646,16 @@ def fire_minimize(ps, sim,
     plt.ylabel("Potential Energy")
     plt.title("FIRE Energy Minimization")
     plt.grid(True)
-    plt.show()
+    
+    plt.savefig("fire_minimization.png", dpi=300, bbox_inches='tight')
+    plt.close()
 
     return converged
+
+
+#--------------------------------------
+# Helper Functions / Additional Calculations
+#--------------------------------------
 
 def calculate_msd(ps: ParticleSystem, ref_position: np.ndarray) -> float:
     """
@@ -659,3 +666,38 @@ def calculate_msd(ps: ParticleSystem, ref_position: np.ndarray) -> float:
     dr = ps.unwrapped_position - ref_position
     squared_displacement = np.sum(dr**2, axis=1)
     return np.mean(squared_displacement)
+
+def calculate_diffusion_coefficient(msd_time: list, msd_trajectory: list, fit_start_ratio=0.25):
+    """
+    Calculates the self-diffusion coefficient D using Einstein's relation in 3D:
+        MSD(t) = 6 * D * t  =>  D = slope / 6
+        
+    Parameters:
+        msd_time (list or np.ndarray): Array of relative times in ps.
+        msd_trajectory (list or np.ndarray): Array of MSD values in nm^2.
+        fit_start_ratio (float): Fractional index where linear regime starts (default: 0.25 to skip ballistic phase).
+        
+    Returns:
+        D_nm2_ps (float): Diffusion coefficient in nm^2/ps.
+        D_cm2_s (float): Diffusion coefficient in cm^2/s.
+        slope (float): Slope of the fit line (nm^2/ps).
+        intercept (float): Intercept of the fit line.
+    """
+    t_arr = np.array(msd_time)
+    msd_arr = np.array(msd_trajectory)
+    
+    # Skip the short ballistic regime (e.g. initial 25% of data)
+    start_idx = int(len(t_arr) * fit_start_ratio)
+    
+    # Perform linear fit: msd = slope * t + intercept
+    slope, intercept = np.polyfit(t_arr[start_idx:], msd_arr[start_idx:], 1)
+    
+    # D in 3D: D = slope / 6
+    D_nm2_ps = slope / 6.0
+    
+    # Unit conversion: 1 nm^2/ps = 10^-18 m^2 / 10^-12 s = 10^-6 m^2/s = 10^-2 cm^2/s
+    # Wait: 1 nm^2/ps = (10^-7 cm)^2 / 10^-12 s = 10^-14 cm^2 / 10^-12 s = 10^-2 cm^2/s ... Wait, 1 nm = 10^-7 cm => (10^-7)^2 = 10^-14 cm^2.
+    # 10^-14 / 10^-12 = 10^-2 cm^2/s (or 10^-4 m^2/s).
+    D_cm2_s = D_nm2_ps * 1e-2
+    
+    return D_nm2_ps, D_cm2_s, slope, intercept

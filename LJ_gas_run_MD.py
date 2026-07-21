@@ -43,6 +43,7 @@ from LJ_gas import(
     update_rdf_histogram,
     finalize_rdf,
     calculate_msd,
+    calculate_diffusion_coefficient,
     )
 
 #----------------------------------------------------------------
@@ -264,6 +265,12 @@ r, g = finalize_rdf(
 )
 
 #--------------------------------------
+# Calculate Diffusion Coefficient via Einstein Relation
+#--------------------------------------
+if len(msd_trajectory) > 0:
+    D_nm2_ps, D_cm2_s, msd_slope, msd_intercept = calculate_diffusion_coefficient(msd_time, msd_trajectory, fit_start_ratio=0.25)
+
+#--------------------------------------
 # W R I T E    T R A J E C T O R I E S 
 #--------------------------------------
 # write position trajectory to file
@@ -354,9 +361,15 @@ plt.savefig(file_name_base + "_RDF.png", dpi=300, bbox_inches="tight")
 
 plt.figure(figsize=(8, 6))
 plt.plot(msd_time, msd_trajectory, label="MSD")
+
+#linear fit line
+fit_line = msd_slope * np.array(msd_time) + msd_intercept
+plt.plot(msd_time, fit_line, '--', label=f'Fit: slope={msd_slope:.4f} nm$^2$/ps', color='red')
+
 plt.xlabel("time [ps]", fontsize=14)
 plt.ylabel(r"MSD [nm$^2$]", fontsize=14)
 plt.title("Mean Squared Displacement", fontsize=14)
+plt.legend(fontsize=12)
 plt.grid(True)
 
 plt.savefig(file_name_base + "_MSD.png", dpi=300, bbox_inches='tight')
@@ -390,6 +403,15 @@ else:
 
 output_lines.append("")     
 output_lines.append(f"{'Lower cutoff radius:':<30}{sim.rij_min:>10.3f} nm")
+
+if len(msd_trajectory) > 0:
+    output_lines.append("")
+    output_lines.append("----------------------------------------------------------")
+    output_lines.append("Transport Properties")
+    output_lines.append("----------------------------------------------------------")
+    output_lines.append(f"{'Diffusion coef (D):':<30}{D_nm2_ps:>10.4e} nm^2/ps")
+    output_lines.append(f"{'Diffusion coef (D):':<30}{D_cm2_s:>10.4e} cm^2/s")
+
 output_lines.append("----------------------------------------------------------")
 if elapsed_time: 
     time_per_time_step = elapsed_time/sim.n_steps
