@@ -394,8 +394,10 @@ def O_step(ps: ParticleSystem, sim: SimulationParameters, half_step=False):
     # fluctuation term
     scalar = sim.temperature * R * (1.0 - np.exp(-2 * sim.xi * dt))
     # mass is stored in units of u ~ g/mol, but needs to be converted to kg/mol
-    mass = ps.mass *1e3
-    f = np.sqrt(scalar / mass)[:, np.newaxis]  # now shape (N, 1)
+    mass = ps.mass * 1e-3
+    f = np.sqrt(scalar / mass)  # now shape (N, 1)
+    f *= 1e-3  # convert from m/s to nm/ps
+    f = f[:, np.newaxis]
     f = np.broadcast_to(f, ps.random_number.shape)  # ensures (N, 3)
  
     ps.velocity = d * ps.velocity + f * ps.random_number 
@@ -667,7 +669,7 @@ def calculate_msd(ps: ParticleSystem, ref_position: np.ndarray) -> float:
     squared_displacement = np.sum(dr**2, axis=1)
     return np.mean(squared_displacement)
 
-def calculate_diffusion_coefficient(msd_time: list, msd_trajectory: list, fit_start_ratio=0.25):
+def calculate_diffusion_coefficient(msd_time: list, msd_trajectory: list, fit_start_ratio=0.20):
     """
     Calculates the self-diffusion coefficient D using Einstein's relation in 3D:
         MSD(t) = 6 * D * t  =>  D = slope / 6
@@ -675,7 +677,7 @@ def calculate_diffusion_coefficient(msd_time: list, msd_trajectory: list, fit_st
     Parameters:
         msd_time (list or np.ndarray): Array of relative times in ps.
         msd_trajectory (list or np.ndarray): Array of MSD values in nm^2.
-        fit_start_ratio (float): Fractional index where linear regime starts (default: 0.25 to skip ballistic phase).
+        fit_start_ratio (float): Fractional index where linear regime starts (default: 0.20 to skip ballistic phase).
         
     Returns:
         D_nm2_ps (float): Diffusion coefficient in nm^2/ps.
@@ -686,7 +688,7 @@ def calculate_diffusion_coefficient(msd_time: list, msd_trajectory: list, fit_st
     t_arr = np.array(msd_time)
     msd_arr = np.array(msd_trajectory)
     
-    # Skip the short ballistic regime (e.g. initial 25% of data)
+    # Skip the short ballistic regime (e.g. initial 20% of data)
     start_idx = int(len(t_arr) * fit_start_ratio)
     
     # Perform linear fit: msd = slope * t + intercept

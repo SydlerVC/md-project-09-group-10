@@ -24,6 +24,8 @@ import matplotlib.pyplot as plt
 
 import time
 from datetime import datetime
+import os
+print("graphs are saved in:", os.getcwd())
 
 from LJ_gas import(
     ParticleSystem,
@@ -80,7 +82,7 @@ epsilon_argon = 120*R*1e-3      # epsilon in kJ/mol Argon: 120
 
 # simulation
 dt = 0.001             # ps
-n_steps = 10000 
+n_steps = 100000
 use_sd = True
 temperature = 88     # K
 box_length = 2.7      # nm
@@ -184,7 +186,7 @@ energy_trajectory[0,3] = ideal_gas_pressure(ps, sim)      # ideal gas pressure
 # MSD Setup
 # -----------------------------------
 
-msd_start_step = 2000
+msd_start_step = 20000
 msd_trajectory = []
 msd_time = []
 ref_position = None
