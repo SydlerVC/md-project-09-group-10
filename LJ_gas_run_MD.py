@@ -82,10 +82,10 @@ epsilon_argon = 120*R*1e-3      # epsilon in kJ/mol Argon: 120
 
 # simulation
 dt = 0.001             # ps
-n_steps = 100000
+n_steps = 30000
 use_sd = True
-temperature = 88     # K
-box_length = 2.7      # nm
+temperature = 80     # K
+box_length = 4.0      # nm
 sd_eta = 0.1
 tau_thermostat = 1.0  # thermostat coupling constant in 1/ps
 rij_min = 1e-02      # nm
@@ -186,7 +186,7 @@ energy_trajectory[0,3] = ideal_gas_pressure(ps, sim)      # ideal gas pressure
 # MSD Setup
 # -----------------------------------
 
-msd_start_step = 20000
+msd_start_step = 5000
 msd_trajectory = []
 msd_time = []
 ref_position = None
